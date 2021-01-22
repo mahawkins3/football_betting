@@ -53,7 +53,6 @@ res_21 = res_21[keep]
 
 #Concatenate tables
 res_all = pd.concat([res_18, res_19, res_20, res_21])
-print(res_all)
 
 #Convert dates to datetime format
 res_all['Date'] = pd.to_datetime(res_all['Date'], infer_datetime_format=True)
@@ -68,19 +67,20 @@ values = ['H', 'A', 'D']
 res_all['Result'] = np.select(conditions, values)
 res_all['MatchId'] = np.arange(res_all.shape[0])
 
-#Calculate days since team's last match
-home_teams = res_all[['MatchId', 'Date', 'HomeTeam', 'Season']]
-home_teams.columns = ['MatchId', 'Date', 'Team', 'Season']
-away_teams = res_all[['MatchId', 'Date', 'AwayTeam', 'Season']]
-away_teams.columns = ['MatchId', 'Date', 'Team', 'Season']
+#Split data into home teams and away teams
+home_teams = res_all[['MatchId', 'Date', 'HomeTeam', 'Season', 'Result']].copy()
+home_teams.columns = ['MatchId', 'Date', 'Team', 'Season', 'Result']
+home_teams['Type'] = 'Home'
+away_teams = res_all[['MatchId', 'Date', 'AwayTeam', 'Season', 'Result']].copy()
+away_teams.columns = ['MatchId', 'Date', 'Team', 'Season', 'Result']
+away_teams['Type'] = 'Away'
 
 match_dates = pd.concat([home_teams,away_teams])
-match_dates['MatchRankInSeason'] = (match_dates.groupby(['Team', 'Season'])['MatchId']
-    .rank(method='first').astype(int))
 match_dates['MatchRank'] = (match_dates.groupby(['Team'])['MatchId']
     .rank(method='first').astype(int))
 match_dates['JoinKey'] = match_dates['Team'] + match_dates['MatchRank'].astype(str)
 
+#Match to each team's previous match to calculate date difference
 match_dates_right = match_dates.copy()
 match_dates_right['MatchRank'] += 1
 match_dates_right["JoinKey"] = (match_dates_right['Team']
@@ -90,12 +90,20 @@ match_dates_right = match_dates_right[['JoinKey','Date']]
 match_dates = match_dates.merge(match_dates_right, on = 'JoinKey', how = 'inner',
     suffixes = ('', '_prev'))
 
-def datediff(fro, to):
-    return (to - fro).days
+#Calculate days since team's last match
 
 match_dates['DaysSinceLast'] = (match_dates['Date'] - match_dates['Date_prev']).dt.days
 
-match_dates = match_dates[['MatchId', 'Date', 'Team', 'Season',
-    'MatchRankInSeason', 'MatchRank', 'Date_prev', 'DaysSinceLast']]
+##NEED TO ADD THING TO CALCULATE POINTS IN EACH TEAM'S LAST FEW GAMES
 
-print(match_dates)
+match_dates = match_dates[['MatchId', 'Type', 'DaysSinceLast']]
+
+match_dates_home = match_dates[match_dates['Type'] == 'Home']
+match_dates_away = match_dates[match_dates['Type'] == 'Away']
+
+res_all = (res_all.merge(match_dates_home[['MatchId', 'DaysSinceLast']], on = 'MatchId', how = 'left')
+    .merge(match_dates_away[['MatchId', 'DaysSinceLast']], on = 'MatchId', suffixes = ('_home', '_away'), how = 'left'))
+
+
+
+print(res_all)
